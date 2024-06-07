@@ -1,23 +1,24 @@
 import pandas as pd
 import numpy as np
 import re
+import torch
 
 token_dict = {
-    '0': 1, 
-    '1': 2, 
-    '2': 3, 
-    '3': 4, 
-    '4': 5, 
-    '5': 6, 
-    '6': 7, 
-    '7': 8, 
-    '8': 9, 
-    '9': 10, 
-    ']': 11, 
-    'MIN': 12, 
-    'MAX': 13, 
-    'SM': 14, 
-    'MED': 15
+    '0': 0, 
+    '1': 1, 
+    '2': 2, 
+    '3': 3, 
+    '4': 4, 
+    '5': 5, 
+    '6': 6, 
+    '7': 7, 
+    '8': 8, 
+    '9': 9, 
+    ']': 10, 
+    'MIN': 11, 
+    'MAX': 12, 
+    'SM': 13, 
+    'MED': 14
 }
 
 def load_file(file_name):
@@ -66,3 +67,41 @@ def getShortSequences(df, max_sequence_length):
     short_df = df[df['Token_Count'] <= max_sequence_length]
 
     return short_df
+
+tokens = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ']', 'MIN', 'MAX', 'SM', 'MED']
+token_to_index = {token: index for index, token in enumerate(tokens)}
+
+def onehotEncode(row, max_sequence_length):
+    sequences = re.findall(r'(MIN|MAX|MED|SM|\d+|\])', row)
+    sequence_indices = [token_to_index[token] for token in sequences]
+    padded_sequence_indices = sequence_indices + [0] * (max_sequence_length - len(sequence_indices))
+    padded_sequence_tensor = torch.tensor(padded_sequence_indices, dtype=torch.int32)
+    
+    # Convert integer indices to one-hot encodings
+    one_hot_sequence = torch.eye(len(tokens))[padded_sequence_tensor]
+
+    return one_hot_sequence.numpy()
+    
+def processOneHotData(data, sequence_size=2000):
+    df = getShortSequences(data, sequence_size)
+    if len(df) <= 0:
+        return None, None
+
+    X_array = df['Source'].apply(lambda row: onehotEncode(row, sequence_size))  # Apply function row-wise
+
+    # Convert the result to a numpy array
+    X = np.array(X_array)
+    X = np.stack(X)
+    y = df['Target']
+    return X, y
+
+def saveOneHotData(X, y, filepath):
+    X = X.reshape([X.shape[0], X.shape[1]*X.shape[2]])
+    combined_data = np.column_stack((X, y))
+    np.savetxt(filepath, combined_data, delimiter=',', fmt='%s')
+
+def saveOneHotDataAppend(X, y, filepath):
+    X = X.reshape([X.shape[0], X.shape[1]*X.shape[2]])
+    combined_data = np.column_stack((X, y))
+    with open(filepath, 'ab') as f:
+        np.savetxt(f, combined_data, delimiter=',', fmt='%s')
